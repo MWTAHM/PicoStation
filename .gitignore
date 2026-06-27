@@ -50,3 +50,6 @@ Thumbs.db
 *.wmv
 
 .vscode/
+/.github
+/build_pico2
+/third_party/pico-sdk

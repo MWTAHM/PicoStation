@@ -20,7 +20,7 @@ set(PICO_BOARD pico2 CACHE STRING "Board type")
 # set(PICOSTATION_VARIANT "picostation_plus_pico2")
 
 if(NOT DEFINED PICOSTATION_VARIANT)
-    if(PICO_BOARD EQUAL pico2)
+    if(PICO_BOARD STREQUAL pico2)
         set(PICOSTATION_VARIANT "picostation_pico2")
     else()
         set(PICOSTATION_VARIANT "picostation_pico1")

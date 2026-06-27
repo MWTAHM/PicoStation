@@ -327,7 +327,7 @@ continue_transfer:
 				m_sectorSending = loadedSector[bufferForDMA];
 				m_lastSectorTime = time_us_64();
 
-				dma_hw->ch[dmaChannel].read_addr = (uint32_t)pioSamples[bufferForDMA];
+				dma_channel_set_read_addr(dmaChannel, pioSamples[bufferForDMA], false);
 
 				// Sync with the I2S clock
 				while (gpio_get(Pin::LRCK) == 1)

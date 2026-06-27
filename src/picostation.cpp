@@ -7,7 +7,8 @@
 #include "disc_image.h"
 #include "directory_listing.h"
 #include "drive_mechanics.h"
-#include "hardware/pwm.h"
+    #include "hardware/pwm.h"
+    #include "hardware/clocks.h"
 #include <hardware/i2c.h>
 #include "i2s.h"
 #include "logging.h"
@@ -56,19 +57,37 @@ static uint8_t s_resetPending = 0;
 static picostation::PWMSettings pwmDataClock = 
 {
 	.gpio = Pin::DA15,
-	.wrap = (1 * 32) - 1, 
-	.clkdiv = 4, 
-	.invert = true, 
-	.level = (32 / 2)
+#ifdef PICO_RP2350
+	.wrap = (1 * 64) - 1,
+	.clkdiv = 1,
+#else
+	.wrap = (1 * 32) - 1,
+	.clkdiv = 4,
+#endif
+	.invert = true,
+#ifdef PICO_RP2350
+	.level = (64 / 2),
+#else
+	.level = (32 / 2),
+#endif
 };
 
 static picostation::PWMSettings pwmLRClock = 
 {
 	.gpio = Pin::LRCK,
+#ifdef PICO_RP2350
+	.wrap = (48 * 64) - 1,
+	.clkdiv = 1,
+#else
 	.wrap = (48 * 32) - 1,
 	.clkdiv = 4,
+#endif
 	.invert = false,
-	.level = (48 * (32 / 2))
+#ifdef PICO_RP2350
+	.level = (48 * (64 / 2)),
+#else
+	.level = (48 * (32 / 2)),
+#endif
 };
 
 static picostation::PWMSettings pwmMainClock =
@@ -279,19 +298,20 @@ void __time_critical_func(picostation::initHW)()
     gpio_set_input_hysteresis_enabled(Pin::RESET, true);
     gpio_set_input_hysteresis_enabled(Pin::CMD_CK, true);
     
+#ifndef PICO_RP2350
     i2c_init(i2c0, 400*1000);
 	gpio_set_function(Pin::EXP_I2C0_SDA, GPIO_FUNC_I2C);
 	gpio_set_function(Pin::EXP_I2C0_SCL, GPIO_FUNC_I2C);
 	gpio_pull_up(Pin::EXP_I2C0_SDA);
 	gpio_pull_up(Pin::EXP_I2C0_SCL);
-	
-	// Initialize the Si5351
+
 	if (si5351_Init(0))
 	{
 		si5351_SetupCLK1(53203425, SI5351_DRIVE_STRENGTH_8MA);
 		si5351_SetupCLK2(53693175, SI5351_DRIVE_STRENGTH_8MA);
 		si5351_EnableOutputs((1<<1) | (1<<2));
 	}
+#endif
 
     initPWM(&pwmMainClock);
     initPWM(&pwmDataClock);
@@ -307,7 +327,9 @@ void __time_critical_func(picostation::initHW)()
     g_subqOffset = pio_add_program(PIOInstance::SUBQ, &subq_program);
 
     pio_sm_set_enabled(PIOInstance::I2S_DATA, SM::I2S_DATA, true);
-    pwm_set_mask_enabled((1 << pwmLRClock.sliceNum) | (1 << pwmDataClock.sliceNum) | (1 << pwmMainClock.sliceNum));
+    pwm_set_enabled(pwmLRClock.sliceNum, true);
+    pwm_set_enabled(pwmDataClock.sliceNum, true);
+    pwm_set_enabled(pwmMainClock.sliceNum, true);
 
     uint64_t startTime = time_us_64();
     gpio_set_dir(Pin::RESET, GPIO_OUT);
@@ -372,12 +394,16 @@ void __time_critical_func(picostation::updatePlaybackSpeed)()
     {
         s_currentPlaybackSpeed = g_targetPlaybackSpeed;
         const unsigned int clock_div = (s_currentPlaybackSpeed == 1) ? c_clockDivNormal : c_clockDivDouble;
-        pwm_set_mask_enabled(0);
+        pwm_set_enabled(pwmLRClock.sliceNum, false);
+        pwm_set_enabled(pwmDataClock.sliceNum, false);
+        pwm_set_enabled(pwmMainClock.sliceNum, false);
         pwm_config_set_clkdiv_int(&pwmDataClock.config, clock_div);
         pwm_config_set_clkdiv_int(&pwmLRClock.config, clock_div);
-        pwm_hw->slice[pwmDataClock.sliceNum].div = pwmDataClock.config.div;
-        pwm_hw->slice[pwmLRClock.sliceNum].div = pwmLRClock.config.div;
-        pwm_set_mask_enabled((1 << pwmLRClock.sliceNum) | (1 << pwmDataClock.sliceNum) | (1 << pwmMainClock.sliceNum));
+        pwm_set_clkdiv_int_frac4(pwmDataClock.sliceNum, clock_div, 0);
+        pwm_set_clkdiv_int_frac4(pwmLRClock.sliceNum, clock_div, 0);
+        pwm_set_enabled(pwmLRClock.sliceNum, true);
+        pwm_set_enabled(pwmDataClock.sliceNum, true);
+        pwm_set_enabled(pwmMainClock.sliceNum, true);
         DEBUG_PRINT("x%i\n", s_currentPlaybackSpeed);
     }
 }
@@ -424,7 +450,7 @@ void __time_critical_func(picostation::reset)()
     m_mechCommand.resetBootSectorPattern();
 	
 	uint64_t startTime = time_us_64();
-	
+
 	while ((time_us_64() - startTime) < 30000)
 	{
 		if (gpio_get(Pin::RESET) == 0)
@@ -432,7 +458,7 @@ void __time_critical_func(picostation::reset)()
 			startTime = time_us_64();
 		}
 	}
-	
+
 	while ((time_us_64() - startTime) < 30000)
 	{
 		if (gpio_get(Pin::CMD_CK) == 0)

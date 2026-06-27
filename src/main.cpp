@@ -11,10 +11,15 @@
 uint32_t c_sectorMax = 333000;  // 74:00:00
 
 int main() {
-    vreg_set_voltage(VREG_VOLTAGE_1_15);  // Increase the VREG voltage to 1.15V for the faster clock speed
-    sleep_ms(100); // Wait for the voltage to stabilize
-
+#ifdef PICO_RP2350
+    vreg_set_voltage(VREG_VOLTAGE_1_10);
+    sleep_ms(100);
+    set_sys_clock_khz(135600, true);
+#else
+    vreg_set_voltage(VREG_VOLTAGE_1_15);
+    sleep_ms(100);
     set_sys_clock_khz(271200, true);
+#endif
 
     initPseudoAtomics();
     eccedc_init();
